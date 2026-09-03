@@ -1,0 +1,478 @@
+--- /tmp/orig_app.js	2026-09-02 20:55:17.435662880 +0000
++++ /tmp/new_app.js	2026-09-02 20:55:17.438990223 +0000
+@@ -5,9 +5,28 @@
+ let matchmakingTimer = null;
+ let matchmakingCountdown = 10;
+ 
++function getPlayerToken() {
++  let token = localStorage.getItem('NYASATECH1_PLAYER_TOKEN');
++  if (!token) {
++    token = 'p_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
++    localStorage.setItem('NYASATECH1_PLAYER_TOKEN', token);
++  }
++  GAME_STATE.playerToken = token;
++  return token;
++}
++
+ try {
+-  socket = io(); // Connects to backend host
+-  
++  socket = io(); // Connects to backend host (see server/server.js)
++  getPlayerToken();
++
++  socket.on('connect', () => {
++    // Reconnect flow: if a match was active when we dropped, ask the
++    // server to re-seat us in the same room with the same token.
++    if (GAME_STATE.matchActive && GAME_STATE.roomId) {
++      socket.emit('rejoin_room', { roomId: GAME_STATE.roomId, playerToken: GAME_STATE.playerToken });
++    }
++  });
++
+   socket.on('match_found', (data) => {
+     stopMatchmakingTimer();
+     startGame({
+@@ -18,20 +37,95 @@
+     });
+   });
+ 
++  // ---- Private room system ----
++  socket.on('room_created', (data) => {
++    showRoomInviteModal(data.roomCode, data.inviteLink);
++  });
++
++  socket.on('room_join_error', (data) => {
++    alert(data && data.message ? data.message : 'Could not join that room.');
++  });
++
++  socket.on('room_ready', (data) => {
++    // Both players present — match starts automatically.
++    closeModal();
++    startGame({
++      mode: 'online',
++      opponent: data.opponentName,
++      roomId: data.roomId,
++      assignedColor: data.assignedColor || 'black'
++    });
++  });
++
+   socket.on('opponent_moved', (data) => {
+     if (data.gameType === GAME_STATE.type && GAME_STATE.mode === 'online') {
+       executeMove(data.move);
+     }
+   });
+ 
+-  socket.on('opponent_disconnected', () => {
+-    alert("Your opponent disconnected! Victory awarded by forfeit.");
+-    finishMatch('White');
++  // ---- Disconnect / reconnect handling ----
++  socket.on('opponent_reconnecting', () => {
++    document.getElementById('aiThinkingBanner').innerText = 'Opponent disconnected \u2014 waiting for them to reconnect\u2026';
++    document.getElementById('aiThinkingBanner').style.display = 'block';
++  });
++
++  socket.on('opponent_back', () => {
++    document.getElementById('aiThinkingBanner').style.display = 'none';
++  });
++
++  socket.on('opponent_forfeited', () => {
++    alert("Your opponent didn't reconnect in time. Victory awarded by forfeit.");
++    finishMatch(GAME_STATE.myColor === 'white' ? 'White' : 'Black');
++  });
++
++  socket.on('state_sync', (data) => {
++    // Authoritative resync after a reconnect.
++    GAME_STATE.board = data.board;
++    GAME_STATE.turn = data.turn;
++    if (GAME_STATE.type === 'chess' && GAME_STATE.chessInstance && data.fen) {
++      GAME_STATE.chessInstance.load(data.fen);
++    }
++    renderBoard();
+   });
+ } catch (e) {
+   console.log("Socket connection deferred (offline mode active)");
+ }
+ 
++/* ---- Private room UI helpers ---- */
++function createPrivateRoom() {
++  if (!socket || !socket.connected) { alert('Not connected to the multiplayer server yet. Try again in a moment.'); return; }
++  socket.emit('create_room', { gameType: GAME_STATE.type, playerToken: getPlayerToken(), playerName: userProgress.displayName || 'Player' });
++}
++
++function joinPrivateRoom(codeFromInput) {
++  const code = (codeFromInput || document.getElementById('roomCodeInput').value || '').trim().toUpperCase();
++  if (!code) { alert('Enter a room code first.'); return; }
++  if (!socket || !socket.connected) { alert('Not connected to the multiplayer server yet. Try again in a moment.'); return; }
++  socket.emit('join_room', { roomCode: code, gameType: GAME_STATE.type, playerToken: getPlayerToken(), playerName: userProgress.displayName || 'Player' });
++}
++
++function showRoomInviteModal(roomCode, inviteLink) {
++  document.getElementById('modalTitle').innerText = 'Room Created';
++  document.getElementById('modalBody').innerHTML =
++    'Share this code or link with a friend. The match starts automatically once they join.<br><br>' +
++    '<div style="font-family:var(--font-heading); font-size:1.6rem; letter-spacing:0.2em; text-align:center; margin:0.5rem 0;">' + roomCode + '</div>' +
++    '<input readonly value="' + inviteLink + '" onclick="this.select()" style="width:100%; padding:0.5rem; border-radius:6px; border:1px solid var(--border-color); background:#020617; color:#e2e8f0; font-size:0.75rem;" />';
++  document.getElementById('modalOverlay').classList.add('active');
++}
++
++function checkRoomCodeInUrl() {
++  const match = window.location.pathname.match(/\/room\/([A-Za-z0-9]{4,8})/);
++  if (match) {
++    const code = match[1].toUpperCase();
++    setTimeout(() => {
++      if (confirm('Join room ' + code + '?')) {
++        selectModeView(GAME_STATE.type || 'checkers');
++        joinPrivateRoom(code);
++      }
++    }, 1200);
++  }
++}
++
+ /* ==========================================================================
+    2. PLAYER DATA & LOCAL STORAGE PERSISTENCE (LOCALSTORAGE / INDEXEDDB)
+    ========================================================================== */
+@@ -140,6 +234,7 @@
+    ========================================================================== */
+ window.addEventListener('DOMContentLoaded', () => {
+   initStorage();
++  getPlayerToken();
+ 
+   // STEP 1: 5-Second Splash Screen
+   setTimeout(() => {
+@@ -149,6 +244,7 @@
+     setTimeout(() => {
+       splash.style.display = 'none';
+       checkOnboardingFlow();
++      checkRoomCodeInUrl();
+     }, 800);
+   }, 5000);
+ });
+@@ -348,10 +444,26 @@
+   }, 1000);
+ 
+   if (socket && socket.connected) {
+-    socket.emit('find_match', { gameType: GAME_STATE.type });
++    socket.emit('find_match', {
++      gameType: GAME_STATE.type,
++      playerToken: getPlayerToken(),
++      playerName: userProgress.displayName || 'Player',
++      rating: computePlayerRating()
++    });
+   }
+ }
+ 
++/* Rough client-side skill proxy sent to the server's matchmaking queue —
++   real Elo (server-tracked, persisted) is covered separately in
++   UPGRADE_PLAN.md as a database-backed follow-up; this keeps today's
++   localStorage-only profile useful for matching in the meantime. */
++function computePlayerRating() {
++  const xp = userProgress.xp || 0;
++  const wins = userProgress.wins || 0;
++  const losses = userProgress.losses || 0;
++  return Math.round(1000 + xp * 2 + wins * 12 - losses * 6);
++}
++
+ function cancelMatchmaking() {
+   stopMatchmakingTimer();
+   if (socket && socket.connected) {
+@@ -452,7 +564,13 @@
+   validMoves: [],
+   activeMultiJumpSquare: null,
+   roomId: null,
+-  matchActive: false
++  matchActive: false,
++  aiPlannedChain: null,   // full multi-jump chain chosen by the checkers AI for the current turn
++  aiPlannedIndex: 0,      // which step of that chain we're currently executing
++  playerToken: null,      // persisted id used to reconnect into an online match
++  lastMove: null,         // { from:[r,c], to:[r,c] } — drives the last-move highlight
++  capturedByWhite: [],    // pieces white has captured, for the captured-piece tray
++  capturedByBlack: []     // pieces black has captured, for the captured-piece tray
+ };
+ 
+ function createCheckersSVG(color, isKing) {
+@@ -594,6 +712,11 @@
+   GAME_STATE.selectedSquare = null;
+   GAME_STATE.validMoves = [];
+   GAME_STATE.activeMultiJumpSquare = null;
++  GAME_STATE.aiPlannedChain = null;
++  GAME_STATE.aiPlannedIndex = 0;
++  GAME_STATE.lastMove = null;
++  GAME_STATE.capturedByWhite = [];
++  GAME_STATE.capturedByBlack = [];
+ 
+   if (GAME_STATE.type === 'checkers') {
+     GAME_STATE.board = initCheckersBoard();
+@@ -637,20 +760,28 @@
+ function renderBoard() {
+   const boardEl = document.getElementById('board');
+   boardEl.innerHTML = '';
++  boardEl.classList.add('board-wood');
++  boardEl.classList.remove('checkmate-flash');
+ 
+   const movesForTurn = GAME_STATE.type === 'checkers'
+     ? getCheckersMoves(GAME_STATE.board, GAME_STATE.turn, GAME_STATE.activeMultiJumpSquare)
+     : getChessJsMoves();
+ 
++  const isCheckmate = GAME_STATE.type === 'chess' && GAME_STATE.chessInstance &&
++    GAME_STATE.chessInstance.game_over() && GAME_STATE.matchActive &&
++    GAME_STATE.chessInstance.in_checkmate();
++
+   if (GAME_STATE.type === 'chess' && GAME_STATE.chessInstance && GAME_STATE.chessInstance.game_over() && GAME_STATE.matchActive) {
+     let winner = 'Draw';
+-    if (GAME_STATE.chessInstance.in_checkmate()) {
++    if (isCheckmate) {
+       winner = GAME_STATE.turn === 'white' ? 'Black' : 'White';
+     }
++    renderCheckersOrChessBoard(movesForTurn, isCheckmate);
++    if (isCheckmate) boardEl.classList.add('checkmate-flash');
+     setTimeout(() => {
+       alert(`Game Over! ${winner === 'Draw' ? 'Stalemate / Draw' : winner + ' Wins!'}`);
+       finishMatch(winner);
+-    }, 100);
++    }, isCheckmate ? 900 : 100);
+     return;
+   }
+ 
+@@ -668,6 +799,36 @@
+     GAME_STATE.validMoves = movesForTurn;
+   }
+ 
++  renderCheckersOrChessBoard(movesForTurn, false);
++
++  document.getElementById('p1Pill').classList.toggle('active', GAME_STATE.turn === 'white');
++  document.getElementById('p2Pill').classList.toggle('active', GAME_STATE.turn === 'black');
++  renderCapturedTrays();
++
++  // Trigger Human-Like AI turn execution
++  if (GAME_STATE.turn === 'black' && GAME_STATE.matchActive) {
++    triggerAiTurn();
++  }
++}
++
++function findKingInCheckSquare() {
++  if (GAME_STATE.type !== 'chess' || !GAME_STATE.chessInstance) return null;
++  if (!GAME_STATE.chessInstance.in_check || !GAME_STATE.chessInstance.in_check()) return null;
++  const turnColor = GAME_STATE.chessInstance.turn(); // 'w' | 'b'
++  const board = GAME_STATE.chessInstance.board();
++  for (let rr = 0; rr < 8; rr++) {
++    for (let cc = 0; cc < 8; cc++) {
++      const cell = board[rr][cc];
++      if (cell && cell.type === 'k' && cell.color === turnColor) return [rr, cc];
++    }
++  }
++  return null;
++}
++
++function renderCheckersOrChessBoard(movesForTurn, forceNoInteraction) {
++  const boardEl = document.getElementById('board');
++  const checkSquare = findKingInCheckSquare();
++
+   for (let r = 0; r < 8; r++) {
+     for (let c = 0; c < 8; c++) {
+       const sq = document.createElement('div');
+@@ -677,12 +838,23 @@
+         sq.classList.add('selected');
+       }
+ 
+-      const targetMove = GAME_STATE.validMoves.find(m => m.to[0] === r && m.to[1] === c);
+-      if (targetMove) {
+-        if (targetMove.captured || GAME_STATE.board[r][c]) {
+-          sq.classList.add('highlight-capture');
+-        } else {
+-          sq.classList.add('highlight');
++      if (GAME_STATE.lastMove) {
++        if (GAME_STATE.lastMove.from[0] === r && GAME_STATE.lastMove.from[1] === c) sq.classList.add('last-move-from');
++        if (GAME_STATE.lastMove.to[0] === r && GAME_STATE.lastMove.to[1] === c) sq.classList.add('last-move-to');
++      }
++
++      if (checkSquare && checkSquare[0] === r && checkSquare[1] === c) {
++        sq.classList.add('king-in-check');
++      }
++
++      if (!forceNoInteraction) {
++        const targetMove = GAME_STATE.validMoves.find(m => m.to[0] === r && m.to[1] === c);
++        if (targetMove) {
++          if (targetMove.captured || GAME_STATE.board[r][c]) {
++            sq.classList.add('highlight-capture');
++          } else {
++            sq.classList.add('highlight');
++          }
+         }
+       }
+ 
+@@ -691,18 +863,28 @@
+         sq.innerHTML = GAME_STATE.type === 'checkers' ? createCheckersSVG(p.color, p.isKing) : createChessSVG(p.type, p.color);
+       }
+ 
+-      sq.addEventListener('click', () => handleSquareClick(r, c, movesForTurn));
++      if (!forceNoInteraction) {
++        sq.addEventListener('click', () => handleSquareClick(r, c, movesForTurn));
++      }
+       boardEl.appendChild(sq);
+     }
+   }
++}
+ 
+-  document.getElementById('p1Pill').classList.toggle('active', GAME_STATE.turn === 'white');
+-  document.getElementById('p2Pill').classList.toggle('active', GAME_STATE.turn === 'black');
++function renderCapturedTrays() {
++  const p1Tray = document.getElementById('capturedByP1');
++  const p2Tray = document.getElementById('capturedByP2');
++  if (!p1Tray || !p2Tray) return;
++
++  const mine = GAME_STATE.myColor === 'white' ? GAME_STATE.capturedByWhite : GAME_STATE.capturedByBlack;
++  const theirs = GAME_STATE.myColor === 'white' ? GAME_STATE.capturedByBlack : GAME_STATE.capturedByWhite;
++
++  const renderPieceIcon = (item) => GAME_STATE.type === 'checkers'
++    ? createCheckersSVG(item.color, item.isKing)
++    : createChessSVG(item.type, item.color);
+ 
+-  // Trigger Human-Like AI turn execution
+-  if (GAME_STATE.turn === 'black' && GAME_STATE.matchActive) {
+-    triggerAiTurn();
+-  }
++  p1Tray.innerHTML = mine.map(renderPieceIcon).join('');
++  p2Tray.innerHTML = theirs.map(renderPieceIcon).join('');
+ }
+ 
+ function handleSquareClick(r, c, legalMoves) {
+@@ -730,11 +912,18 @@
+ }
+ 
+ function executeMove(move) {
++  GAME_STATE.lastMove = { from: move.from, to: move.to };
++
+   if (GAME_STATE.type === 'checkers') {
+     const p = GAME_STATE.board[move.from[0]][move.from[1]];
+     GAME_STATE.board[move.from[0]][move.from[1]] = null;
+ 
+     if (move.captured) {
++      const victim = GAME_STATE.board[move.captured[0]][move.captured[1]];
++      if (victim) {
++        const tray = p.color === 'white' ? GAME_STATE.capturedByWhite : GAME_STATE.capturedByBlack;
++        tray.push({ color: victim.color, isKing: victim.isKing });
++      }
+       GAME_STATE.board[move.captured[0]][move.captured[1]] = null;
+     }
+ 
+@@ -758,7 +947,12 @@
+     // Execute Chess move via chess.js
+     const fromSquare = String.fromCharCode(97 + move.from[1]) + (8 - move.from[0]);
+     const toSquare = String.fromCharCode(97 + move.to[1]) + (8 - move.to[0]);
+-    GAME_STATE.chessInstance.move({ from: fromSquare, to: toSquare, promotion: 'q' });
++    const mover = GAME_STATE.turn;
++    const result = GAME_STATE.chessInstance.move({ from: fromSquare, to: toSquare, promotion: move.promotion || 'q' });
++    if (result && result.captured) {
++      const tray = mover === 'white' ? GAME_STATE.capturedByWhite : GAME_STATE.capturedByBlack;
++      tray.push({ color: mover === 'white' ? 'black' : 'white', type: result.captured });
++    }
+     syncChessJsToBoard();
+   }
+ 
+@@ -793,28 +987,96 @@
+ 
+ function triggerAiTurn() {
+   document.getElementById('aiThinkingBanner').style.display = 'block';
++  if (GAME_STATE.type === 'checkers') {
++    triggerCheckersAiTurn();
++  } else {
++    triggerChessAiTurn();
++  }
++}
+ 
+-  const moves = GAME_STATE.type === 'checkers'
+-    ? getCheckersMoves(GAME_STATE.board, 'black', GAME_STATE.activeMultiJumpSquare)
+-    : getChessJsMoves();
++/* ---- Checkers AI turn: plans the FULL capture chain once via
++   NyasaCheckersAI (js/checkers-engine.js), then plays it back one jump
++   at a time through the existing executeMove()/animation pipeline so a
++   multi-jump still looks and behaves exactly like before. ---- */
++function triggerCheckersAiTurn() {
++  // Continuing a previously-planned multi-jump: just play the next step.
++  if (GAME_STATE.aiPlannedChain && GAME_STATE.aiPlannedIndex < GAME_STATE.aiPlannedChain.length) {
++    const step = GAME_STATE.aiPlannedChain[GAME_STATE.aiPlannedIndex];
++    GAME_STATE.aiPlannedIndex++;
++    setTimeout(() => {
++      executeMove({ from: step.from, to: step.to, captured: step.captured });
++      document.getElementById('aiThinkingBanner').style.display = 'none';
++    }, calculateHumanThinkingDelay('fast'));
++    return;
++  }
++
++  GAME_STATE.aiPlannedChain = null;
++  GAME_STATE.aiPlannedIndex = 0;
+ 
+-  if (moves.length === 0) return;
++  const legacyMoves = getCheckersMoves(GAME_STATE.board, 'black', GAME_STATE.activeMultiJumpSquare);
++  if (legacyMoves.length === 0) { document.getElementById('aiThinkingBanner').style.display = 'none'; return; }
+ 
+-  // Classify Move Complexity
+-  let moveCategory = 'simple';
+-  if (moves.length > 8) moveCategory = 'difficult';
+-  if (moves.some(m => m.captured || (m.flags && m.flags.includes('c')))) moveCategory = 'critical';
+-  if (Math.random() < 0.15) moveCategory = 'fast';
++  let moveCategory = legacyMoves.length > 8 ? 'difficult' : 'simple';
++  if (legacyMoves.some(m => m.captured)) moveCategory = 'critical';
+ 
+   const delay = calculateHumanThinkingDelay(moveCategory);
+ 
+   setTimeout(() => {
+-    let chosenMove = selectBestAiMove(moves);
+-    executeMove(chosenMove);
++    let chain = null;
++    if (typeof NyasaCheckersAI !== 'undefined') {
++      chain = NyasaCheckersAI.chooseChain(GAME_STATE.board, 'black', userProgress.aiDifficulty);
++    }
+     document.getElementById('aiThinkingBanner').style.display = 'none';
++
++    if (chain && chain.length > 0) {
++      GAME_STATE.aiPlannedChain = chain;
++      GAME_STATE.aiPlannedIndex = 1;
++      const step = chain[0];
++      executeMove({ from: step.from, to: step.to, captured: step.captured });
++    } else {
++      // Fallback (engine script failed to load) — old single-ply heuristic.
++      executeMove(selectBestAiMove(legacyMoves));
++    }
+   }, delay);
+ }
+ 
++/* ---- Chess AI turn: delegates to NyasaChessAI (js/chess-engine.js),
++   a minimax/alpha-beta/iterative-deepening engine, then converts its
++   chess.js verbose move back into the app's internal {from:[r,c],
++   to:[r,c]} format so executeMove() needs no chess-specific changes. ---- */
++function triggerChessAiTurn() {
++  const legacyMoves = getChessJsMoves();
++  if (legacyMoves.length === 0) { document.getElementById('aiThinkingBanner').style.display = 'none'; return; }
++
++  let moveCategory = legacyMoves.length > 20 ? 'difficult' : 'simple';
++  if (GAME_STATE.chessInstance.in_check && GAME_STATE.chessInstance.in_check()) moveCategory = 'critical';
++
++  const delay = calculateHumanThinkingDelay(moveCategory);
++
++  setTimeout(() => {
++    let verboseMove = null;
++    if (typeof NyasaChessAI !== 'undefined') {
++      verboseMove = NyasaChessAI.chooseMove(GAME_STATE.chessInstance, userProgress.aiDifficulty);
++    }
++    document.getElementById('aiThinkingBanner').style.display = 'none';
++
++    if (verboseMove) {
++      executeMove(chessVerboseToInternal(verboseMove));
++    } else {
++      // Fallback (engine script failed to load) — old single-ply heuristic.
++      executeMove(selectBestAiMove(legacyMoves));
++    }
++  }, delay);
++}
++
++function chessVerboseToInternal(m) {
++  const fromCol = m.from.charCodeAt(0) - 97;
++  const fromRow = 8 - parseInt(m.from[1]);
++  const toCol = m.to.charCodeAt(0) - 97;
++  const toRow = 8 - parseInt(m.to[1]);
++  return { from: [fromRow, fromCol], to: [toRow, toCol], san: m.san, flags: m.flags, promotion: m.promotion };
++}
++
+ function selectBestAiMove(moves) {
+   // AI evaluation completely decoupled from chess.js logic
+   if (userProgress.aiDifficulty === 'Beginner' || userProgress.aiDifficulty === 'Easy') {

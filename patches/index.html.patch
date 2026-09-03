@@ -1,0 +1,51 @@
+--- /tmp/orig_index.html	2026-09-02 20:55:17.443662880 +0000
++++ /tmp/new_index.html	2026-09-02 20:55:17.445787897 +0000
+@@ -215,9 +215,22 @@
+             <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+             Online PvP Matchmaking
+           </h2>
+-          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">Search active online pools with automatic bot substitution after 10 seconds.</p>
++          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">Skill-matched search pool with automatic bot substitution if no one is found in time.</p>
+           <button class="btn btn-gold" onclick="startOnlineSearch()">Search For Players</button>
+         </div>
++
++        <div class="card">
++          <h2 style="font-family: var(--font-heading); font-size: 1.2rem; margin-bottom:0.5rem; display:flex; align-items:center; gap:0.5rem;">
++            <svg class="icon" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
++            Private Room
++          </h2>
++          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">Create a room and share the code or invite link with a friend, or join one they sent you.</p>
++          <button class="btn btn-gold" style="width:100%; margin-bottom:0.5rem;" onclick="createPrivateRoom()">Create Room</button>
++          <div style="display:flex; gap:0.5rem;">
++            <input type="text" id="roomCodeInput" placeholder="Enter room code" maxlength="8" style="flex:1; padding:0.5rem; border-radius:6px; border:1px solid var(--border-color); background:#020617; color:#e2e8f0; text-transform:uppercase;" />
++            <button class="btn btn-outline" onclick="joinPrivateRoom()">Join</button>
++          </div>
++        </div>
+       </div>
+     </section>
+ 
+@@ -255,8 +268,12 @@
+             </div>
+           </div>
+ 
++          <div class="captured-tray" id="capturedByP2"></div>
++
+           <div id="board" class="board"></div>
+ 
++          <div class="captured-tray" id="capturedByP1"></div>
++
+           <div class="mobile-thumb-bar">
+             <button class="btn btn-outline" id="undoBtn" onclick="undoMove()">Undo Move</button>
+             <button class="btn btn-outline" style="border-color: var(--red-accent); color: var(--red-accent);" onclick="resignMatch()">Resign Match</button>
+@@ -415,6 +432,11 @@
+     <p>&copy; 2026 NYASATECH1 MW Developers. All Rights Reserved.</p>
+   </footer>
+ 
++  <!-- AI Engines (must be present before app.js calls them; load order
++       relative to app.js itself doesn't matter — see UPGRADE_PLAN.md) -->
++  <script src="js/chess-engine.js"></script>
++  <script src="js/checkers-engine.js"></script>
++
+   <!-- Main Application Script -->
+   <script src="app.js"></script>
+ </body>
