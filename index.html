@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>NYASATECH1 Games | Official Board Hub</title>
+  <meta name="description" content="Malawi Checkers (Flying King Edition) and Standard Chess platform with exact rule enforcement." />
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Real-time Socket.io Client -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <!-- Standard Chess Rules Helper -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+  
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- STEP 1: SPLASH SCREEN (5 SECONDS) -->
+  <div id="splashScreen">
+    <div class="morph-container">
+      <div class="morph-shape"></div>
+    </div>
+    <div class="splash-title">NYASATECH1 MW</div>
+    <div class="splash-sub">Developers</div>
+    <div style="font-size: 0.75rem; color: #64748b; margin-top: 2rem;">Play Responsibly</div>
+  </div>
+
+  <!-- STEP 2: PRIVACY POLICY GATE -->
+  <div id="privacyScreen">
+    <div class="privacy-card">
+      <h3 style="font-family: var(--font-heading); font-size: 1.3rem;">Terms & Privacy Policy</h3>
+      <div class="privacy-content">
+        <h4>1. Player Agreement</h4>
+        <p>Welcome to NYASATECH1 Games. By accessing or using our board game hub, you agree to adhere to these Terms of Service and Privacy Policy.</p>
+        <h4>2. Data Storage & Privacy</h4>
+        <p>All progress, coins, stats, levels, and XP are stored locally on your device via standard browser storage APIs (localStorage / IndexedDB). We do not collect or sell personal information to external third parties.</p>
+        <h4>3. Fair Play & Rules</h4>
+        <p>Players must follow official game rules including Authoritative Malawi Checkers rules (Flying Kings, mandatory captures, continuous multi-captures) and Standard Chess rules.</p>
+      </div>
+      <div class="privacy-actions">
+        <button class="btn btn-outline" onclick="declineTerms()">Decline</button>
+        <button class="btn btn-gold" onclick="acceptTerms()">Accept & Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 3: LOCAL PLAYER PROFILE CREATION MODAL -->
+  <div id="profileSetupScreen" class="modal-overlay">
+    <div class="modal-card" style="text-align: left; max-width: 440px;">
+      <h3 style="font-family: var(--font-heading); font-size: 1.3rem; margin-bottom: 0.5rem; color: var(--accent-primary);">Create Player Profile</h3>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">Set up your local player profile to begin earning XP and ranking up.</p>
+      
+      <div class="form-group">
+        <label>Display Name *</label>
+        <input type="text" id="setupDisplayName" placeholder="e.g. NyasaGrandmaster" />
+      </div>
+      <div class="form-group">
+        <label>Email Address (Optional)</label>
+        <input type="email" id="setupEmail" placeholder="e.g. player@domain.mw" />
+      </div>
+      <div class="form-group">
+        <label>Profile Avatar URL (Optional)</label>
+        <input type="text" id="setupAvatar" placeholder="https://..." />
+      </div>
+
+      <button class="btn btn-gold" style="width: 100%; margin-top: 1rem;" onclick="completeProfileSetup()">Save & Claim Welcome Bonus</button>
+    </div>
+  </div>
+
+  <!-- CELEBRATION / FIRST LOGIN BONUS POPUP -->
+  <div id="celebrationModal" class="modal-overlay">
+    <div class="modal-card">
+      <div style="font-size: 3rem; margin-bottom: 0.5rem;">🎉</div>
+      <h3 style="font-family: var(--font-heading); font-size: 1.4rem; color: var(--accent-primary);">Welcome Bonus Unlocked!</h3>
+      <div style="font-size: 1.8rem; font-weight: bold; color: var(--green-accent); margin: 0.8rem 0;">+50 XP</div>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.2rem;">Your profile has been created successfully. Welcome to NYASATECH1 Games!</p>
+      <button class="btn btn-gold" style="width: 100%;" onclick="closeCelebrationModal()">Let's Play</button>
+    </div>
+  </div>
+
+  <!-- HEADER -->
+  <header>
+    <div class="nav-container">
+      <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <button class="btn btn-outline" id="globalBackBtn" style="padding:0.3rem 0.6rem; min-height:36px; display:none;" onclick="goBackView()" title="Back">
+          <svg class="icon" viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+        </button>
+        <a href="#" class="brand-logo" id="brandLogoLink" onclick="switchView('homeView')">
+          <span class="tile tile-gold">
+            <svg class="icon" viewBox="0 0 24 24" style="width:16px; height:16px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+          </span>
+          NYASATECH1 <span style="color:var(--accent-primary)">Games</span>
+        </a>
+      </div>
+      <div style="display: flex; gap: 0.5rem; align-items: center;">
+        <button class="btn btn-gold" id="navCoinsBtn" style="padding:0.3rem 0.6rem; min-height:36px;" onclick="switchView('profileView')">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+          <span id="navXpDisplay">0 XP</span>
+        </button>
+        <button class="btn btn-outline" id="menuToggleBtn" style="padding:0.3rem; min-height:36px;">
+          <svg class="icon" viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- SIDE DRAWER MENU -->
+  <div class="drawer-overlay" id="drawerOverlay"></div>
+  <div class="drawer" id="drawer">
+    <div>
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="font-family: var(--font-heading)">Menu Navigation</h3>
+        <button class="btn btn-outline" id="drawerCloseBtn" style="padding:0.2rem; min-height:32px; min-width:32px;">✕</button>
+      </div>
+      <ul class="drawer-nav-list">
+        <li><button class="btn" id="drawerBtnHome" onclick="switchView('homeView')">Games Lobby</button></li>
+        <li><button class="btn" id="drawerBtnProfile" onclick="switchView('profileView')">Player Profile</button></li>
+        <li><button class="btn" id="drawerBtnSettings" onclick="switchView('settingsView')">Settings & Difficulty</button></li>
+        <li><button class="btn" id="drawerBtnChamp" onclick="switchView('championshipView')">Championships</button></li>
+      </ul>
+    </div>
+    <div style="font-size: 0.75rem; color: var(--text-muted); text-align: center;">
+      NYASATECH1 MW Platform &copy; 2026
+    </div>
+  </div>
+
+  <!-- MAIN CONTAINER -->
+  <main>
+    <!-- LOBBY VIEW -->
+    <section id="homeView" class="view-section active">
+      <div class="hero">
+        <h1>Authoritative Board Hub</h1>
+        <p>Engine-enforced Malawi Checkers (Flying King Edition) and Chess with persistent user progression and localized profile saves.</p>
+      </div>
+
+      <div class="game-grid">
+        <!-- Malawi Checkers -->
+        <div class="card">
+          <div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
+              <span class="tile tile-gold">
+                <svg class="icon" viewBox="0 0 24 24" style="width:18px; height:18px;"><circle cx="12" cy="12" r="9"></circle></svg>
+              </span>
+              <span class="badge badge-active">Flying King Rules</span>
+            </div>
+            <h2 style="font-family: var(--font-heading); font-size: 1.3rem;">Malawi Checkers</h2>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0.5rem 0 1rem;">Enforces mandatory captures, multi-captures, long-range Flying Kings, and mid-jump promotions.</p>
+          </div>
+          <button class="btn btn-gold" onclick="selectModeView('checkers')">Play Checkers</button>
+        </div>
+
+        <!-- Chess -->
+        <div class="card">
+          <div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
+              <span class="tile tile-gold">
+                <svg class="icon" viewBox="0 0 24 24" style="width:18px; height:18px;"><path d="M11,3 L13,3 L13,5 L15,5 L15,7 L13,7 L13,9 L11,9 L11,7 L9,7 L9,5 L11,5 Z M7,11 L17,11 L16,18 L8,18 Z M6,20 L18,20 L18,21 L6,21 Z"></path></svg>
+              </span>
+              <span class="badge badge-active">Standard Rules</span>
+            </div>
+            <h2 style="font-family: var(--font-heading); font-size: 1.3rem;">Standard Chess</h2>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0.5rem 0 1rem;">Full rule set including Castling, En Passant, Pawn Promotion, Check, Checkmate, and Stalemate validation.</p>
+          </div>
+          <button class="btn btn-gold" onclick="selectModeView('chess')">Play Chess</button>
+        </div>
+
+        <!-- Championship Placeholder -->
+        <div class="card" style="border-color: rgba(245, 158, 11, 0.4);">
+          <div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
+              <span class="tile tile-gold">
+                <svg class="icon" viewBox="0 0 24 24" style="width:18px; height:18px;"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path><path d="M4 22h16"></path><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path></svg>
+              </span>
+              <span class="badge badge-soon">Coming Soon</span>
+            </div>
+            <h2 style="font-family: var(--font-heading); font-size: 1.3rem;">Championships</h2>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0.5rem 0 1rem;">Tournament brackets and competitive ranking pools under development.</p>
+          </div>
+          <button class="btn btn-outline" onclick="showComingSoonModal('Championship Mode')">View Details</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- MODE SELECTION VIEW -->
+    <section id="modeSelectView" class="view-section">
+      <div class="back-btn-container">
+        <button class="btn btn-outline" onclick="goBackView()">
+          <svg class="icon" viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+          Back
+        </button>
+      </div>
+
+      <div class="hero">
+        <h1 id="selectedGameTitle">Select Match Type</h1>
+        <p>Choose your match format: practice against AI engine or play online matchmaking.</p>
+      </div>
+
+      <div class="game-grid" style="max-width: 700px; margin: 0 auto;">
+        <div class="card">
+          <h2 style="font-family: var(--font-heading); font-size: 1.2rem; margin-bottom:0.5rem; display:flex; align-items:center; gap:0.5rem;">
+            <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"></rect><circle cx="12" cy="5" r="2"></circle><path d="M12 7v4"></path><line x1="8" y1="16" x2="8" y2="16"></line><line x1="16" y1="16" x2="16" y2="16"></line></svg>
+            Single Player (AI)
+          </h2>
+          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">Play locally against personalized AI personalities and selectable difficulty.</p>
+          <button class="btn btn-gold" onclick="switchView('settingsView')">Match Settings & AI Direct</button>
+        </div>
+
+        <div class="card">
+          <h2 style="font-family: var(--font-heading); font-size: 1.2rem; margin-bottom:0.5rem; display:flex; align-items:center; gap:0.5rem;">
+            <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+            Online PvP Matchmaking
+          </h2>
+          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">Skill-matched search pool with automatic bot substitution if no one is found in time.</p>
+          <button class="btn btn-gold" onclick="startOnlineSearch()">Search For Players</button>
+        </div>
+
+        <div class="card">
+          <h2 style="font-family: var(--font-heading); font-size: 1.2rem; margin-bottom:0.5rem; display:flex; align-items:center; gap:0.5rem;">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+            Private Room
+          </h2>
+          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">Create a room and share the code or invite link with a friend, or join one they sent you.</p>
+          <button class="btn btn-gold" style="width:100%; margin-bottom:0.5rem;" onclick="createPrivateRoom()">Create Room</button>
+          <div style="display:flex; gap:0.5rem;">
+            <input type="text" id="roomCodeInput" placeholder="Enter room code" maxlength="8" style="flex:1; padding:0.5rem; border-radius:6px; border:1px solid var(--border-color); background:#020617; color:#e2e8f0; text-transform:uppercase;" />
+            <button class="btn btn-outline" onclick="joinPrivateRoom()">Join</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MATCHMAKING SEARCH OVERLAY VIEW -->
+    <section id="matchmakingView" class="view-section">
+      <div class="card" style="max-width:400px; margin: 2rem auto; text-align:center;">
+        <h2 style="font-family: var(--font-heading); margin-bottom: 0.5rem;">Searching For Players...</h2>
+        <p style="color: var(--text-muted); font-size: 0.85rem;">Matching skill level, XP, and rating...</p>
+        <div class="spinner"></div>
+        <div class="timer-box" id="matchTimer">10s</div>
+        <button class="btn btn-outline" onclick="cancelMatchmaking()" style="width:100%; margin-top:1rem;">Cancel Search</button>
+      </div>
+    </section>
+
+    <!-- GAME ARENA VIEW -->
+    <section id="arenaView" class="view-section">
+      <div class="arena-container">
+        <div class="board-wrapper">
+          <div class="status-bar">
+            <!-- Opponent Pill -->
+            <div class="player-pill" id="p2Pill">
+              <div class="avatar-wrapper">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                <span class="active-dot" id="p2ActiveDot"></span>
+              </div>
+              <span id="p2NameDisplay">AI Opponent</span>
+            </div>
+
+            <div id="aiThinkingBanner" style="display:none; color:var(--accent-primary); font-size:0.8rem; font-weight:600;">Thinking...</div>
+
+            <!-- You Pill -->
+            <div class="player-pill active" id="p1Pill">
+              <svg class="icon" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+              <span id="p1NameDisplay">You</span>
+            </div>
+          </div>
+
+          <div class="captured-tray" id="capturedByP2"></div>
+
+          <div id="board" class="board"></div>
+
+          <div class="captured-tray" id="capturedByP1"></div>
+
+          <div class="mobile-thumb-bar">
+            <button class="btn btn-outline" id="undoBtn" onclick="undoMove()">Undo Move</button>
+            <button class="btn btn-outline" style="border-color: var(--red-accent); color: var(--red-accent);" onclick="resignMatch()">Resign Match</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DIRECT AI & MATCH SETTINGS VIEW -->
+    <section id="settingsView" class="view-section">
+      <div class="back-btn-container">
+        <button class="btn btn-outline" id="settingsBackBtn" onclick="goBackView()">
+          <svg class="icon" viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+          Back
+        </button>
+      </div>
+
+      <div class="hero">
+        <h1>Match Settings & AI Configuration</h1>
+        <p>Select AI personality, difficulty level, sound preferences, and theme choices.</p>
+      </div>
+
+      <div class="card" style="max-width: 600px; margin: 0 auto;" id="matchSettingsPanel">
+        <div class="panel-section-title" style="font-family: var(--font-heading); font-size: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.4rem; margin-bottom: 0.5rem;">AI Match Controls</div>
+        
+        <div class="form-group">
+          <label>AI Difficulty</label>
+          <select id="aiHardnessSelector" onchange="updateAiLevel(this.value)">
+            <option value="Beginner">Beginner</option>
+            <option value="Easy">Easy</option>
+            <option value="Medium">Medium</option>
+            <option value="Hard">Hard</option>
+            <option value="Expert">Expert</option>
+            <option value="Master">Master</option>
+            <option value="Grandmaster">Grandmaster</option>
+            <option value="Impossible">Impossible</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>AI Personality Style</label>
+          <select id="aiPersonalitySelector" onchange="updateAiPersonality(this.value)">
+            <option value="Aggressive">Aggressive</option>
+            <option value="Defensive">Defensive</option>
+            <option value="Tactical">Tactical</option>
+            <option value="Promotion Specialist">Promotion Specialist</option>
+            <option value="Flying King Expert">Flying King Expert</option>
+            <option value="Endgame Master">Endgame Master</option>
+            <option value="Random Human" selected>Random Human</option>
+          </select>
+        </div>
+
+        <div class="panel-section-title" style="font-family: var(--font-heading); font-size: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.4rem; margin-bottom: 0.5rem; margin-top: 1rem;">Appearance & Themes</div>
+        
+        <div class="form-group">
+          <label>Board Theme Palette</label>
+          <select id="themeSelector" onchange="updateTheme(this.value)">
+            <option value="classic">Classic NYASATECH1</option>
+            <option value="gold">Gold Elite</option>
+            <option value="ocean">Ocean Blue</option>
+            <option value="forest">Forest Green</option>
+            <option value="purple">Royal Purple</option>
+            <option value="crimson">Crimson Red</option>
+            <option value="cyber">Cyber Neon</option>
+            <option value="light">Light Mode</option>
+          </select>
+        </div>
+
+        <button class="btn btn-gold" id="startAiMatchBtn" style="width: 100%; margin-top: 1rem;" onclick="launchDirectAiGame()">Start AI Match</button>
+      </div>
+    </section>
+
+    <!-- PROFILE VIEW -->
+    <section id="profileView" class="view-section">
+      <div class="back-btn-container">
+        <button class="btn btn-outline" onclick="goBackView()">
+          <svg class="icon" viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+          Back
+        </button>
+      </div>
+
+      <div class="hero">
+        <h1>Player Profile</h1>
+        <p>Persistent level progression, achievements, and statistics persistent in browser storage.</p>
+      </div>
+
+      <div class="card" style="max-width: 600px; margin: 0 auto;">
+        <div class="panel-section-title" style="font-family: var(--font-heading); font-size: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.4rem; margin-bottom: 0.5rem;">Profile Identification</div>
+        <div class="form-group">
+          <label>Display Name</label>
+          <input type="text" id="profileNameInput" placeholder="Enter Display Name" onchange="saveProfileData()" />
+        </div>
+        <div class="form-group">
+          <label>Email Address</label>
+          <input type="email" id="profileEmailInput" placeholder="Enter Email Address" onchange="saveProfileData()" />
+        </div>
+        
+        <div class="panel-section-title" style="font-family: var(--font-heading); font-size: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.4rem; margin-bottom: 0.5rem; margin-top: 1rem;">Progression & Statistics</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; text-align: center; margin-top: 0.5rem;">
+          <div style="background:#020617; padding:0.75rem; border-radius:8px;">
+            <div style="font-size:0.75rem; color:var(--text-muted);">TOTAL XP</div>
+            <div style="font-size:1.4rem; color:var(--accent-primary); font-weight:bold;" id="profXp">0 XP</div>
+          </div>
+          <div style="background:#020617; padding:0.75rem; border-radius:8px;">
+            <div style="font-size:0.75rem; color:var(--text-muted);">PLAYER LEVEL</div>
+            <div style="font-size:1.4rem; color:var(--green-accent); font-weight:bold;" id="profLevel">Lvl 1</div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; text-align: center; margin-top: 0.5rem;">
+          <div style="background:#020617; padding:0.75rem; border-radius:8px;">
+            <div style="font-size:0.75rem; color:var(--text-muted);">MATCHES PLAYED</div>
+            <div style="font-size:1.2rem; font-weight:bold;" id="profMatches">0</div>
+          </div>
+          <div style="background:#020617; padding:0.75rem; border-radius:8px;">
+            <div style="font-size:0.75rem; color:var(--text-muted);">RECORD (W/L)</div>
+            <div style="font-size:1.2rem; font-weight:bold;" id="profRecord">0W - 0L</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CHAMPIONSHIP MODE PLACEHOLDER -->
+    <section id="championshipView" class="view-section">
+      <div class="back-btn-container">
+        <button class="btn btn-outline" onclick="goBackView()">
+          <svg class="icon" viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+          Back
+        </button>
+      </div>
+
+      <div class="hero">
+        <h1>Championship Mode</h1>
+        <p>Competitive structure for registration, entry, and prize distribution.</p>
+      </div>
+
+      <div class="card" style="max-width: 600px; margin: 0 auto; text-align: center;">
+        <span class="badge badge-soon" style="display: inline-block; margin-bottom: 0.5rem;">Coming Soon</span>
+        <h2 style="font-family: var(--font-heading); margin-bottom: 0.5rem;">Tournament Registration Offline</h2>
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;">Championship mode functionality is currently locked. Features will include account verification, automated entry management, and coin prize distribution.</p>
+        <button class="btn btn-outline" style="width: 100%;" onclick="showComingSoonModal('Championship Registration')">Register Interest (Coming Soon)</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODAL CONTAINER -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal-card">
+      <h3 style="font-family:var(--font-heading); font-size:1.3rem; color:var(--accent-primary); margin-bottom:0.5rem;" id="modalTitle">Coming Soon</h3>
+      <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:1rem;" id="modalBody">Action currently disabled.</p>
+      <button class="btn btn-gold" style="width:100%;" onclick="closeModal()">Close</button>
+    </div>
+  </div>
+
+  <footer>
+    <p>&copy; 2026 NYASATECH1 MW Developers. All Rights Reserved.</p>
+  </footer>
+
+  <!-- AI Engines (must be present before app.js calls them; load order
+       relative to app.js itself doesn't matter — see UPGRADE_PLAN.md) -->
+  <script src="js/chess-engine.js"></script>
+  <script src="js/checkers-engine.js"></script>
+
+  <!-- Main Application Script -->
+  <script src="app.js"></script>
+</body>
+</html>

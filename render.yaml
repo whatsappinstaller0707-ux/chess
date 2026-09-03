@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: nyasatech1-games
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CORS_ORIGIN
+        value: "*"
+      # PORT is provided automatically by Render — no need to set it here.

@@ -1,0 +1,21 @@
+{
+  "name": "nyasatech1-games",
+  "version": "2.0.0",
+  "description": "NYASATECH1 Games — Chess and Malawi Checkers with AI engines and real-time multiplayer.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "chess.js": "0.10.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}
